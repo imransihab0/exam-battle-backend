@@ -18,3 +18,8 @@ userRoutes.get(
   roleBasedProtection(...Object.values(Roles)),
   userController.getProfile,
 );
+userRoutes.get(
+  "/friends",
+  roleBasedProtection(...Object.values(Roles)),
+  userController.getOtherUsers,
+);

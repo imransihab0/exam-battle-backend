@@ -15,14 +15,9 @@ const createUserService = async (playLoad: Partial<IUser>) => {
     throw new Error("User already exist");
   }
 
-  const hashedPassword = await bcryptjs.hash(
-    password as string,
-    parseInt(envVars.BCRYPT_SALT_ROUND),
-  );
-
   const userData = {
     email: userEmail,
-    password: hashedPassword,
+    password: password,
     ...rest,
   };
 
@@ -46,7 +41,15 @@ const getProfileService = async (userInfo: JwtPayload) => {
   return profile;
 };
 
+const getOtherUsersService = async (userInfo: JwtPayload) => {
+  const users = await User.find({ _id: { $ne: userInfo.userId } }).select(
+    "name email image studentInfo",
+  );
+  return users;
+};
+
 export const userServices = {
   createUserService,
   getProfileService,
+  getOtherUsersService,
 };

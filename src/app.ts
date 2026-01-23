@@ -21,7 +21,7 @@ app.use("/api/v1", routes);
 
 app.get("/", (req: Request, res: Response) => {
   res.status(200).json({
-    message: "welcome to localLens backend",
+    message: "welcome to exam-battle backend",
   });
 });
 
