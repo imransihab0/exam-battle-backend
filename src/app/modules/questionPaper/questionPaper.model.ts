@@ -1,5 +1,6 @@
 import { model, Schema } from "mongoose";
 import { IQuestionPaper } from "./questionPaper.interface";
+import "../question/question.model";
 
 const questionPaperSchema = new Schema<IQuestionPaper>(
   {
