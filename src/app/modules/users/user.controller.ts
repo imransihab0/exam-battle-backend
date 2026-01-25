@@ -46,7 +46,27 @@ const getProfile = async (req: Request, res: Response) => {
   }
 };
 
+const getOtherUsers = async (req: Request, res: Response) => {
+  try {
+    const userInfo = req.user;
+    const users = await userServices.getOtherUsersService(
+      userInfo as JwtPayload,
+    );
+
+    responseManager.success(res, {
+      statusCode: 200,
+      success: true,
+      message: "Other users fetched successfully",
+      data: users,
+    });
+  } catch (error) {
+    console.log(error);
+    responseManager.error(res, error as Error, 500);
+  }
+};
+
 export const userController = {
   createUser,
   getProfile,
+  getOtherUsers,
 };
