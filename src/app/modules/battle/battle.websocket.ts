@@ -9,9 +9,26 @@ export const initWebSocket = (httpServer: any) => {
     },
   });
 
+  const roomReadyStatus: Record<string, Set<string>> = {};
+  const onlineUsers = new Map<string, Set<string>>(); // userId -> Set<socketId>
+  const socketUserMap = new Map<string, string>(); // socketId -> userId
+
   io.on("connection", (socket) => {
     socket.on("join_self", (userId: string) => {
       socket.join(userId);
+
+      // Online Status Logic
+      socketUserMap.set(socket.id, userId);
+      if (!onlineUsers.has(userId)) {
+        onlineUsers.set(userId, new Set());
+        // Notify everyone this user is online
+        io.emit("user_online", { userId });
+      }
+      onlineUsers.get(userId)?.add(socket.id);
+    });
+
+    socket.on("get_online_users", () => {
+      socket.emit("online_users_list", Array.from(onlineUsers.keys()));
     });
 
     socket.on("invitation", (data) => {
@@ -52,8 +69,54 @@ export const initWebSocket = (httpServer: any) => {
       io.to(data.battleRoomId).emit("arena_updated", data);
     });
 
+    // Ready Status Logic
+
+    socket.on("player_ready", (data: { battleRoomId: string; userId: string }) => {
+      const { battleRoomId, userId } = data;
+
+      if (!roomReadyStatus[battleRoomId]) {
+        roomReadyStatus[battleRoomId] = new Set();
+      }
+
+      roomReadyStatus[battleRoomId].add(userId);
+
+      // Notify others in room
+      socket.to(battleRoomId).emit("opponent_ready", { userId });
+
+      // Check if 2 players are ready
+      if (roomReadyStatus[battleRoomId].size >= 2) {
+        io.to(battleRoomId).emit("battle_start", { battleRoomId });
+        // Cleanup
+        delete roomReadyStatus[battleRoomId];
+      }
+    });
+
+    socket.on("player_unready", (data: { battleRoomId: string; userId: string }) => {
+      const { battleRoomId, userId } = data;
+
+      if (roomReadyStatus[battleRoomId]) {
+        roomReadyStatus[battleRoomId].delete(userId);
+
+        // Notify others
+        socket.to(battleRoomId).emit("opponent_unready", { userId });
+      }
+    });
+
     socket.on("disconnect", () => {
       console.log("Client disconnected");
+
+      const userId = socketUserMap.get(socket.id);
+      if (userId) {
+        socketUserMap.delete(socket.id);
+        const userSockets = onlineUsers.get(userId);
+        if (userSockets) {
+          userSockets.delete(socket.id);
+          if (userSockets.size === 0) {
+            onlineUsers.delete(userId);
+            io.emit("user_offline", { userId });
+          }
+        }
+      }
     });
   });
 
