@@ -12,6 +12,7 @@ export const initWebSocket = (httpServer: any) => {
   const roomReadyStatus: Record<string, Set<string>> = {};
   const onlineUsers = new Map<string, Set<string>>(); // userId -> Set<socketId>
   const socketUserMap = new Map<string, string>(); // socketId -> userId
+  const lobbyDataMap = new Map<string, any>(); // battleRoomId -> lobbyData
 
   io.on("connection", (socket) => {
     socket.on("join_self", (userId: string) => {
@@ -48,6 +49,11 @@ export const initWebSocket = (httpServer: any) => {
       io.in(senderUserInfo._id).socketsJoin(battleRoomId);
 
       const payload = { ...data, battleRoomId };
+
+      // Store lobby data
+      lobbyDataMap.set(battleRoomId, payload);
+      console.log("Lobby created:", battleRoomId, payload);
+
       io.to(acceptedUserInfo._id).emit("join_lobby", payload);
       io.to(senderUserInfo._id).emit("join_lobby", payload);
     });
@@ -61,11 +67,17 @@ export const initWebSocket = (httpServer: any) => {
 
         if (data.battleRoomId) {
           io.in(data.battleRoomId).socketsLeave(data.battleRoomId);
+          lobbyDataMap.delete(data.battleRoomId);
         }
       },
     );
 
     socket.on("update_arena", (data) => {
+      // Update lobby data
+      if (data.battleRoomId) {
+        lobbyDataMap.set(data.battleRoomId, data);
+        console.log("Arena updated:", data.battleRoomId, data);
+      }
       io.to(data.battleRoomId).emit("arena_updated", data);
     });
 
@@ -85,9 +97,27 @@ export const initWebSocket = (httpServer: any) => {
 
       // Check if 2 players are ready
       if (roomReadyStatus[battleRoomId].size >= 2) {
-        io.to(battleRoomId).emit("battle_start", { battleRoomId });
+        const lobbyData = lobbyDataMap.get(battleRoomId);
+        const startPayload = { battleRoomId, ...lobbyData };
+
+        console.log("Battle starting:", startPayload);
+        io.to(battleRoomId).emit("battle_start", startPayload);
+
         // Cleanup
         delete roomReadyStatus[battleRoomId];
+        // lobbyDataMap.delete(battleRoomId); // REMOVED to persist data for battle page
+      }
+    });
+
+    socket.on("join_battle", (data: { battleRoomId: string }) => {
+      const battleData = lobbyDataMap.get(data.battleRoomId);
+      console.log("SERVER: join_battle request for:", data.battleRoomId);
+      if (battleData) {
+        console.log("SERVER: Found data, sending battle_details");
+        socket.join(data.battleRoomId);
+        socket.emit("battle_details", battleData);
+      } else {
+        console.log("SERVER: Data NOT found for:", data.battleRoomId);
       }
     });
 

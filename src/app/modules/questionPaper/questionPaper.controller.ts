@@ -19,6 +19,23 @@ const getAllQuestionPapers = async (req: Request, res: Response) => {
   }
 };
 
+const getSingleQuestionPaper = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const result = await questionPaperService.getQuestionPaperById(id as string);
+    responseManager.success(res, {
+      statusCode: 200,
+      success: true,
+      message: "Question paper fetched successfully",
+      data: result,
+    });
+  } catch (error: any) {
+    logger.error(error);
+    responseManager.error(res, error as Error, 400);
+  }
+};
+
 export const questionPaperController = {
   getAllQuestionPapers,
+  getSingleQuestionPaper,
 };
