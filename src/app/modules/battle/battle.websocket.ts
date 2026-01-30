@@ -10,10 +10,25 @@ export const initWebSocket = (httpServer: any) => {
   });
 
   const roomReadyStatus: Record<string, Set<string>> = {};
+  const onlineUsers = new Map<string, Set<string>>(); // userId -> Set<socketId>
+  const socketUserMap = new Map<string, string>(); // socketId -> userId
 
   io.on("connection", (socket) => {
     socket.on("join_self", (userId: string) => {
       socket.join(userId);
+
+      // Online Status Logic
+      socketUserMap.set(socket.id, userId);
+      if (!onlineUsers.has(userId)) {
+        onlineUsers.set(userId, new Set());
+        // Notify everyone this user is online
+        io.emit("user_online", { userId });
+      }
+      onlineUsers.get(userId)?.add(socket.id);
+    });
+
+    socket.on("get_online_users", () => {
+      socket.emit("online_users_list", Array.from(onlineUsers.keys()));
     });
 
     socket.on("invitation", (data) => {
@@ -89,6 +104,19 @@ export const initWebSocket = (httpServer: any) => {
 
     socket.on("disconnect", () => {
       console.log("Client disconnected");
+
+      const userId = socketUserMap.get(socket.id);
+      if (userId) {
+        socketUserMap.delete(socket.id);
+        const userSockets = onlineUsers.get(userId);
+        if (userSockets) {
+          userSockets.delete(socket.id);
+          if (userSockets.size === 0) {
+            onlineUsers.delete(userId);
+            io.emit("user_offline", { userId });
+          }
+        }
+      }
     });
   });
 
