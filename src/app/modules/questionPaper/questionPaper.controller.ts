@@ -6,7 +6,6 @@ import { questionPaperService } from "./questionPaper.service";
 const getAllQuestionPapers = async (req: Request, res: Response) => {
   try {
     const result = await questionPaperService.getAllQuestionPapers();
-    console.log(result);
     responseManager.success(res, {
       statusCode: 200,
       success: true,
@@ -21,8 +20,10 @@ const getAllQuestionPapers = async (req: Request, res: Response) => {
 
 const getSingleQuestionPaper = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
-    const result = await questionPaperService.getQuestionPaperById(id as string);
+    console.log(req.params.id);
+    const result = await questionPaperService.getSingleQuestionPaper(
+      req.params.id as string,
+    );
     responseManager.success(res, {
       statusCode: 200,
       success: true,

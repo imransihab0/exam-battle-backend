@@ -1,0 +1,33 @@
+# Exam Battle - Development Progress Tracker
+
+## Real-Time User Status & Lobby
+- [x] **User Status Map**: Implemented `AVAILABLE`, `IN_LOBBY`, and `IN_BATTLE` states in backend.
+- [x] **Invitation Shield**: Backend now blocks invites to busy users and sends error messages.
+- [x] **Friends Sidebar v2**: 
+    - Real-time status badges (Online, In Lobby, In Battle).
+    - Dynamic "Invite" vs "Busy" button states.
+- [x] **Lobby Logic**: Enhanced `leave_lobby` to correctly reset player statuses using `selfId`.
+- [x] **Battle Start**: Removed countdown for faster iteration; players now jump straight into battle.
+
+## Premium Battle Page Refactor
+- [x] **All-In-One Feed**: Removed pagination; all questions are now in a sleek, scrolling feed.
+- [x] **Premium UI**: Switched to a high-end "White & Blue" aesthetic (`slate-50`) with high-density typography.
+- [x] **Symmetric Stat Header**: 
+    - Compact real-time stats for both "You" and "Opponent".
+    - Tracks **Correct**, **Wrong**, **Left**, and **Accuracy** side-by-side.
+    - Dual progress bars (Blue for You, Rose for Opponent).
+
+## Real-Time Synching & Progress
+- [x] **Progress Broadcasting**: Implemented `submit_answer` socket event to sync stats per answer click.
+- [x] **Opponent Ghost Tracking**: Real-time listener updates opponent's stats and progress bar without page refreshes.
+- [x] **Accuracy Engine**: Dynamic calculation of accuracy percentage for both players.
+- [x] **Battle Ceremony**: Final result summary overlay with score comparison and "Exit to Lobby" button.
+
+## Architecture & Stability
+- [x] **Next.js 15+ Compatibility**: Integrated `use(params)` for promise-based route parameters.
+- [x] **Robust Logging**: 
+    - Global request logger in `app.ts`.
+    - Service-level debugging in `questionPaper.service.ts`.
+    - Frontend logs for paperId and API data sync.
+- [x] **API Resilience**: Fixed double-slash URL issues and added MongoDB ObjectId validation.
+- [x] **Data Structure**: Updated service and frontend to handle direct question-array returns.

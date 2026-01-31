@@ -12,7 +12,18 @@ export const initWebSocket = (httpServer: any) => {
   const roomReadyStatus: Record<string, Set<string>> = {};
   const onlineUsers = new Map<string, Set<string>>(); // userId -> Set<socketId>
   const socketUserMap = new Map<string, string>(); // socketId -> userId
-  const lobbyDataMap = new Map<string, any>(); // battleRoomId -> lobbyData
+  const userStatusMap = new Map<
+    string,
+    "AVAILABLE" | "IN_LOBBY" | "IN_BATTLE"
+  >();
+
+  const updateUserStatus = (
+    userId: string,
+    status: "AVAILABLE" | "IN_LOBBY" | "IN_BATTLE",
+  ) => {
+    userStatusMap.set(userId, status);
+    io.emit("user_status_updated", { userId, status });
+  };
 
   io.on("connection", (socket) => {
     socket.on("join_self", (userId: string) => {
@@ -24,15 +35,28 @@ export const initWebSocket = (httpServer: any) => {
         onlineUsers.set(userId, new Set());
         // Notify everyone this user is online
         io.emit("user_online", { userId });
+        userStatusMap.set(userId, "AVAILABLE");
       }
       onlineUsers.get(userId)?.add(socket.id);
     });
 
     socket.on("get_online_users", () => {
-      socket.emit("online_users_list", Array.from(onlineUsers.keys()));
+      const usersList = Array.from(onlineUsers.keys()).map((userId) => ({
+        userId,
+        status: userStatusMap.get(userId) || "AVAILABLE",
+      }));
+      socket.emit("online_users_list", usersList);
     });
 
     socket.on("invitation", (data) => {
+      const receiverStatus = userStatusMap.get(data.receiverFriendId);
+      if (receiverStatus && receiverStatus !== "AVAILABLE") {
+        socket.emit("error_message", {
+          message:
+            "This player is currently in a lobby or battle and cannot be invited.",
+        });
+        return;
+      }
       io.to(data.receiverFriendId).emit("acceptInvitation", data);
     });
 
@@ -43,98 +67,109 @@ export const initWebSocket = (httpServer: any) => {
         return;
       }
 
+      // Mark both users as busy
+      updateUserStatus(senderUserInfo._id, "IN_LOBBY");
+      updateUserStatus(acceptedUserInfo._id, "IN_LOBBY");
+
       const battleRoomId = `battle_${senderUserInfo._id}_${acceptedUserInfo._id}`;
 
       io.in(acceptedUserInfo._id).socketsJoin(battleRoomId);
       io.in(senderUserInfo._id).socketsJoin(battleRoomId);
 
       const payload = { ...data, battleRoomId };
-
-      // Store lobby data
-      lobbyDataMap.set(battleRoomId, payload);
-      console.log("Lobby created:", battleRoomId, payload);
-
       io.to(acceptedUserInfo._id).emit("join_lobby", payload);
       io.to(senderUserInfo._id).emit("join_lobby", payload);
     });
 
     socket.on(
       "leave_lobby",
-      (data: { opponentId: string; battleRoomId: string }) => {
+      (data: { opponentId: string; battleRoomId: string; selfId: string }) => {
         if (data.opponentId) {
           io.to(data.opponentId).emit("lobby_disbanded");
+          updateUserStatus(data.opponentId, "AVAILABLE");
+        }
+
+        if (data.selfId) {
+          updateUserStatus(data.selfId, "AVAILABLE");
         }
 
         if (data.battleRoomId) {
           io.in(data.battleRoomId).socketsLeave(data.battleRoomId);
-          lobbyDataMap.delete(data.battleRoomId);
         }
       },
     );
 
     socket.on("update_arena", (data) => {
-      // Update lobby data
-      if (data.battleRoomId) {
-        lobbyDataMap.set(data.battleRoomId, data);
-        console.log("Arena updated:", data.battleRoomId, data);
-      }
       io.to(data.battleRoomId).emit("arena_updated", data);
     });
 
     // Ready Status Logic
 
-    socket.on("player_ready", (data: { battleRoomId: string; userId: string }) => {
-      const { battleRoomId, userId } = data;
+    socket.on(
+      "player_ready",
+      (data: { battleRoomId: string; userId: string }) => {
+        const { battleRoomId, userId } = data;
 
-      if (!roomReadyStatus[battleRoomId]) {
-        roomReadyStatus[battleRoomId] = new Set();
-      }
+        if (!roomReadyStatus[battleRoomId]) {
+          roomReadyStatus[battleRoomId] = new Set();
+        }
 
-      roomReadyStatus[battleRoomId].add(userId);
+        roomReadyStatus[battleRoomId].add(userId);
 
-      // Notify others in room
-      socket.to(battleRoomId).emit("opponent_ready", { userId });
+        // Notify others in room
+        socket.to(battleRoomId).emit("opponent_ready", { userId });
 
-      // Check if 2 players are ready
-      if (roomReadyStatus[battleRoomId].size >= 2) {
-        const lobbyData = lobbyDataMap.get(battleRoomId);
-        const startPayload = { battleRoomId, ...lobbyData };
+        // Check if 2 players are ready
+        if (roomReadyStatus[battleRoomId].size >= 2) {
+          // Set both players to IN_BATTLE
+          // Since we don't have user IDs easily here without more data,
+          // we can mark them but ideally we'd pass them in the payload
+          io.to(battleRoomId).emit("battle_start", { battleRoomId });
 
-        console.log("Battle starting:", startPayload);
-        io.to(battleRoomId).emit("battle_start", startPayload);
+          // Cleanup
+          delete roomReadyStatus[battleRoomId];
+        }
+      },
+    );
 
-        // Cleanup
-        delete roomReadyStatus[battleRoomId];
-        // lobbyDataMap.delete(battleRoomId); // REMOVED to persist data for battle page
-      }
-    });
+    socket.on(
+      "mark_in_battle",
+      (data: { player1: string; player2: string }) => {
+        updateUserStatus(data.player1, "IN_BATTLE");
+        updateUserStatus(data.player2, "IN_BATTLE");
+      },
+    );
 
-    socket.on("join_battle", (data: { battleRoomId: string }) => {
-      const battleData = lobbyDataMap.get(data.battleRoomId);
-      console.log("SERVER: join_battle request for:", data.battleRoomId);
-      if (battleData) {
-        console.log("SERVER: Found data, sending battle_details");
-        socket.join(data.battleRoomId);
-        socket.emit("battle_details", battleData);
-      } else {
-        console.log("SERVER: Data NOT found for:", data.battleRoomId);
-      }
-    });
+    socket.on(
+      "player_unready",
+      (data: { battleRoomId: string; userId: string }) => {
+        const { battleRoomId, userId } = data;
 
-    socket.on("player_unready", (data: { battleRoomId: string; userId: string }) => {
-      const { battleRoomId, userId } = data;
+        if (roomReadyStatus[battleRoomId]) {
+          roomReadyStatus[battleRoomId].delete(userId);
 
-      if (roomReadyStatus[battleRoomId]) {
-        roomReadyStatus[battleRoomId].delete(userId);
+          // Notify others
+          socket.to(battleRoomId).emit("opponent_unready", { userId });
+        }
+      },
+    );
 
-        // Notify others
-        socket.to(battleRoomId).emit("opponent_unready", { userId });
-      }
+    socket.on(
+      "submit_answer",
+      (data: { battleRoomId: string; userId: string; progress: any }) => {
+        console.log(
+          `>>>> SOCKET: Progress update from ${data.userId} in room ${data.battleRoomId}`,
+          data.progress,
+        );
+        socket.to(data.battleRoomId).emit("opponent_progress", data);
+      },
+    );
+
+    socket.on("leave_battle", (data: { userId: string }) => {
+      updateUserStatus(data.userId, "AVAILABLE");
     });
 
     socket.on("disconnect", () => {
-      console.log("Client disconnected");
-
       const userId = socketUserMap.get(socket.id);
       if (userId) {
         socketUserMap.delete(socket.id);
@@ -143,6 +178,7 @@ export const initWebSocket = (httpServer: any) => {
           userSockets.delete(socket.id);
           if (userSockets.size === 0) {
             onlineUsers.delete(userId);
+            userStatusMap.delete(userId);
             io.emit("user_offline", { userId });
           }
         }
