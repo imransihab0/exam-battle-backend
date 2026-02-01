@@ -29,3 +29,6 @@
 22. [ADD] Created and executed `scripts/backfill-explanation.ts` to populate demo explanations for existing questions.
 23. [FIX] Resolved frontend route conflict by removing duplicate `app/battle/[battleId]` directory.
 24. [UPDATE] Updated `BattlePage` (`[battleRoomId]`) to display question explanations after the battle is finished.
+25. [FIX] Resolved React state update error in `QuestionPaperModal` by wrapping `onSelect` in `useEffect`.
+26. [NEW] Implemented `BattleResultModal` with "Show Explanation" and "Back to Lobby" options.
+27. [UPDATE] Updated `BattlePage` logic to wait for both players to finish before showing results.
